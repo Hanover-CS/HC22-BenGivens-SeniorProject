@@ -1,3 +1,4 @@
 /target
 app/elm-stuff
 app/repl-temp-*
+app/app.js
