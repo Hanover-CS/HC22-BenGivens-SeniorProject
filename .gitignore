@@ -1,1 +1,3 @@
 /target
+app/elm-stuff
+app/repl-temp-*
