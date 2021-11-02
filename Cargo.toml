@@ -5,6 +5,7 @@ edition = "2018"
 
 [dependencies]
 serde_json = "1.0"
+tempfile = "3.2"
 
 [dependencies.rocket]
 version = "0.5.0-rc.1"
@@ -21,3 +22,6 @@ features = ["bundled"]
 [dependencies.serde]
 version = "1.0"
 features = ["derive"]
+
+[dependencies.tantivy]
+version = "0.16.1"
