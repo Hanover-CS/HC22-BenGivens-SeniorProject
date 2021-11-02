@@ -1,0 +1,2 @@
+[global.databases]
+messages = { url = "db/messages.sqlite" }
