@@ -2,7 +2,7 @@ use rocket::fs::{relative, NamedFile};
 use rocket::{get, launch, routes};
 use rocket::response::content::Json;
 use rocket_sync_db_pools::{rusqlite, database};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tantivy::collector::TopDocs;
 use tantivy::query::QueryParser;
 use tantivy::{Index, ReloadPolicy};
@@ -13,7 +13,7 @@ use tempfile::TempDir;
 #[database("messages")]
 struct DatabaseConnection(rusqlite::Connection);
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct Message {
     code: String,
     message: String,
@@ -59,12 +59,14 @@ async fn search(query: String, conn: DatabaseConnection) -> Option<Json<String>>
     let index_path = TempDir::new().ok()?;
     let mut schema_builder = Schema::builder();
     schema_builder.add_text_field("message", TEXT | STORED);
+    schema_builder.add_text_field("code", TEXT | STORED);
     let schema = schema_builder.build();
     
     let index = Index::create_in_dir(&index_path, schema.clone()).ok()?;
     let mut index_writer = index.writer(50_000_000).ok()?;
     
     let message_field = schema.get_field("message")?;
+    let code_field = schema.get_field("code")?;
     
     let messages: Vec<Message> = conn.run(|conn| { 
         let mut stmt = conn.prepare("SELECT code, message FROM error")?;
@@ -81,6 +83,7 @@ async fn search(query: String, conn: DatabaseConnection) -> Option<Json<String>>
     for message in messages {
         let mut doc = Document::default();
         doc.add_text(message_field, message.message);
+        doc.add_text(code_field, message.code);
         index_writer.add_document(doc);
     }
     index_writer.commit().ok()?;
@@ -92,10 +95,12 @@ async fn search(query: String, conn: DatabaseConnection) -> Option<Json<String>>
     
     let results = searcher.search(&query, &TopDocs::with_limit(10)).ok()?;
     
-    let mut messages = Vec::new();
+    let mut messages: Vec<Message> = Vec::new();
     for (_score, address) in results {
         let retrieved_doc = searcher.doc(address).ok()?;
-        messages.push(schema.to_json(&retrieved_doc));
+        let code = retrieved_doc.get_first(code_field)?.text()?.to_owned();
+        let message = retrieved_doc.get_first(message_field)?.text()?.to_owned();
+        messages.push(Message { code, message })
     }
     
     Some(Json(serde_json::to_string_pretty(&messages).ok()?))
