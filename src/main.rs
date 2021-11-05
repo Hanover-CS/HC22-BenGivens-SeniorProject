@@ -1,3 +1,4 @@
+use once_cell::sync::OnceCell;
 use rocket::fs::{relative, NamedFile};
 use rocket::{get, launch, routes};
 use rocket::response::content::Json;
@@ -6,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use tantivy::collector::TopDocs;
 use tantivy::query::QueryParser;
 use tantivy::{Index, ReloadPolicy};
-use tantivy::schema::{STORED, Schema, TEXT};
+use tantivy::schema::{Field, STORED, Schema, TEXT};
 use tantivy::Document;
 use tempfile::TempDir;
 
@@ -23,7 +24,7 @@ struct Message {
 fn rocket() -> _ {
     rocket::build()
         .attach(DatabaseConnection::fairing())
-        .mount("/api/", routes!(messages, search))
+        .mount("/api/", routes!(empty_search, search))
         .mount("/", routes![app_html, app_js])
 }
 
@@ -37,8 +38,8 @@ async fn app_js() -> Option<NamedFile> {
     NamedFile::open(relative!("app/app.js")).await.ok()
 }
 
-#[get("/messages")]
-async fn messages(conn: DatabaseConnection) -> Option<Json<String>> {
+#[get("/search")]
+async fn empty_search(conn: DatabaseConnection) -> Option<Json<String>> {
     let messages: Vec<Message> = conn.run(|conn| { 
         let mut stmt = conn.prepare("SELECT code, message FROM error")?;
         let messages = stmt.query_map([], |row| Ok(
@@ -56,19 +57,49 @@ async fn messages(conn: DatabaseConnection) -> Option<Json<String>> {
 
 #[get("/search/<query>")]
 async fn search(query: String, conn: DatabaseConnection) -> Option<Json<String>> {
-    let index_path = TempDir::new().ok()?;
+    static INDEX: OnceCell<SearchIndex> = OnceCell::new();
+    let SearchIndex {index, code_field, message_field, ..} = INDEX.get_or_init(|| create_search_index(conn));
+
+    let reader = index.reader_builder().reload_policy(ReloadPolicy::OnCommit).try_into().ok()?;
+    let query_parser = QueryParser::for_index(&index, vec![*message_field]);
+
+    let searcher = reader.searcher();
+    let query = query_parser.parse_query(&query).ok()?;
+    
+    let results = searcher.search(&query, &TopDocs::with_limit(10)).ok()?;
+    
+    let mut messages: Vec<Message> = Vec::new();
+    for (_score, address) in results {
+        let retrieved_doc = searcher.doc(address).ok()?;
+        let code = retrieved_doc.get_first(*code_field)?.text()?.to_owned();
+        let message = retrieved_doc.get_first(*message_field)?.text()?.to_owned();
+        messages.push(Message { code, message })
+    }
+    
+    Some(Json(serde_json::to_string_pretty(&messages).ok()?))
+}
+
+struct SearchIndex {
+    _index_directory: TempDir,
+    index: Index,
+    code_field: Field,
+    message_field: Field,
+}
+
+fn create_search_index(conn: DatabaseConnection) -> SearchIndex {
+    let index_directory = TempDir::new().expect("Database search index error. Failed to create temporary directory.");
     let mut schema_builder = Schema::builder();
     schema_builder.add_text_field("message", TEXT | STORED);
     schema_builder.add_text_field("code", TEXT | STORED);
     let schema = schema_builder.build();
     
-    let index = Index::create_in_dir(&index_path, schema.clone()).ok()?;
-    let mut index_writer = index.writer(50_000_000).ok()?;
+    let index = Index::create_in_dir(&index_directory, schema.clone()).expect("Database search index error. Failed to create index in directory.");
+    let mut index_writer = index.writer(50_000_000).expect("Database search index error. Failed to create index writer.");
     
-    let message_field = schema.get_field("message")?;
-    let code_field = schema.get_field("code")?;
+    let message_field = schema.get_field("message").expect("Database search index error. Failed to find 'message' field in schema.");
+    let code_field = schema.get_field("code").expect("Database search index error. Failed to find 'code' field in schema");
     
-    let messages: Vec<Message> = conn.run(|conn| { 
+    let messages: Vec<Message> = futures::executor::block_on(conn.run(|conn| { 
         let mut stmt = conn.prepare("SELECT code, message FROM error")?;
         let messages = stmt.query_map([], |row| Ok(
             Message {
@@ -78,7 +109,7 @@ async fn search(query: String, conn: DatabaseConnection) -> Option<Json<String>>
         let messages: Result<Vec<Message>, rusqlite::Error> = messages.collect(); 
         messages
     }
-    ).await.ok()?;
+    )).expect("Database search index error. Failed to retrieve messages from database.");
     
     for message in messages {
         let mut doc = Document::default();
@@ -86,22 +117,7 @@ async fn search(query: String, conn: DatabaseConnection) -> Option<Json<String>>
         doc.add_text(code_field, message.code);
         index_writer.add_document(doc);
     }
-    index_writer.commit().ok()?;
+    index_writer.commit().expect("Database search index error. Failed to commit write to index.");
     
-    let reader = index.reader_builder().reload_policy(ReloadPolicy::OnCommit).try_into().ok()?;
-    let searcher = reader.searcher();
-    let query_parser = QueryParser::for_index(&index, vec![message_field]);
-    let query = query_parser.parse_query(&query).ok()?;
-    
-    let results = searcher.search(&query, &TopDocs::with_limit(10)).ok()?;
-    
-    let mut messages: Vec<Message> = Vec::new();
-    for (_score, address) in results {
-        let retrieved_doc = searcher.doc(address).ok()?;
-        let code = retrieved_doc.get_first(code_field)?.text()?.to_owned();
-        let message = retrieved_doc.get_first(message_field)?.text()?.to_owned();
-        messages.push(Message { code, message })
-    }
-    
-    Some(Json(serde_json::to_string_pretty(&messages).ok()?))
+    SearchIndex { index, code_field, message_field, _index_directory: index_directory }
 }

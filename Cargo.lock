@@ -326,6 +326,8 @@ dependencies = [
 name = "error_explorer"
 version = "0.1.0"
 dependencies = [
+ "futures",
+ "once_cell",
  "rocket",
  "rocket_sync_db_pools",
  "rusqlite",
