@@ -108,9 +108,7 @@ view_search_result result =
 view_error_message : ErrorMessage -> Html Msg
 view_error_message { message, code } =
     H.tr
-        [ HA.style "white-space" "pre-wrap"
-        , HA.style "font-family" "\"Lucida Console\""
-        ]
+        [ HA.class "error-message-row" ]
         [ "error[E" ++ code ++ "]: " ++ message |> H.text ]
 
 update : Msg -> Model -> ( Model, Cmd Msg )
