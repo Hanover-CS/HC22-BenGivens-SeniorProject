@@ -92,8 +92,8 @@ getSearchResult query =
 errorMessageDecoder : Decoder ErrorMessage
 errorMessageDecoder =
     Decode.map2 ErrorMessage
-        (Decode.field "code" Decode.string)
-        (Decode.field "message" Decode.string)
+        ( Decode.field "code" Decode.string )
+        ( Decode.field "message" Decode.string )
 
 subscriptions : Model -> Sub Msg
 subscriptions model =

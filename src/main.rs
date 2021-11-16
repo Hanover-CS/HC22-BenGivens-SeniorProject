@@ -24,8 +24,8 @@ struct Message {
 fn rocket() -> _ {
     rocket::build()
         .attach(DatabaseConnection::fairing())
-        .mount("/api/", routes!(empty_search, search))
-        .mount("/", routes![app_html, app_js])
+        .mount("/api/", routes!(empty_search, search, force_graph))
+        .mount("/", routes![app_html, app_js, styles_css])
 }
 
 #[get("/")]
@@ -38,10 +38,15 @@ async fn app_js() -> Option<NamedFile> {
     NamedFile::open(relative!("app/app.js")).await.ok()
 }
 
+#[get("/styles.css")]
+async fn styles_css() -> Option<NamedFile> {
+    NamedFile::open(relative!("app/styles.css")).await.ok()
+}
+
 #[get("/search")]
 async fn empty_search(conn: DatabaseConnection) -> Option<Json<String>> {
     let messages: Vec<Message> = conn.run(|conn| { 
-        let mut stmt = conn.prepare("SELECT code, message FROM error")?;
+        let mut stmt = conn.prepare("SELECT code, message FROM error LIMIT 10")?;
         let messages = stmt.query_map([], |row| Ok(
             Message {
             code: row.get(0)?,
@@ -120,4 +125,71 @@ fn create_search_index(conn: DatabaseConnection) -> SearchIndex {
     index_writer.commit().expect("Database search index error. Failed to commit write to index.");
     
     SearchIndex { index, code_field, message_field, _index_directory: index_directory }
+}
+
+#[get("/force_graph")]
+async fn force_graph(conn: DatabaseConnection) -> Option<Json<String>> {
+    let nodes: Vec<ForceNode> = conn.run(|conn| { 
+        let mut stmt = conn.prepare("SELECT id, code, message FROM error LIMIT 10")?;
+        let messages = stmt.query_map([], |row| Ok(
+            ForceNode {
+                id: row.get(0)?,
+                message: Message {
+                    code: row.get(1)?,
+                    message: row.get(2)?,
+                }
+            }     
+        ))?;
+        let nodes: Result<Vec<ForceNode>, rusqlite::Error> = messages.collect(); 
+        nodes
+    }
+    ).await.ok()?;
+    
+    let (nodes, edges) = tokio::task::spawn_blocking(move || {
+        let mut edges = Vec::new();
+        for (i, node_a) in nodes.iter().enumerate() {
+            for node_b in nodes.iter().skip(i + 1) {
+                edges.push(ForceEdge {
+                    a_id: node_a.id,
+                    b_id: node_b.id,
+                    distance: distance(&node_a.message, &node_b.message)
+                });
+            }
+        }
+        (nodes, edges)
+    }).await.ok()?;
+    
+
+    let graph = ForceGraph { nodes, edges };
+
+    Some(Json(serde_json::to_string_pretty(&graph).ok()?))
+}
+
+#[derive(Serialize, Deserialize)]
+struct ForceGraph {
+    nodes: Vec<ForceNode>,
+    edges: Vec<ForceEdge>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ForceNode {
+    id: usize,
+    message: Message,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ForceEdge {
+    a_id: usize,
+    b_id: usize,
+    distance: usize,
+}
+
+fn distance(a: &Message, b: &Message) -> usize {
+    const CODE_WEIGHT: usize = 10;
+    const MESSAGE_WEIGHT: usize = 1;
+    
+    let code_similarity = distance::damerau_levenshtein(&a.code, &b.code);
+    let message_similarity = distance::damerau_levenshtein(&a.message, &b.message);
+
+    code_similarity * CODE_WEIGHT + message_similarity * MESSAGE_WEIGHT
 }
