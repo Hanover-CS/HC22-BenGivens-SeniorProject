@@ -1,8 +1,6 @@
 module Main exposing (..)
 
 import Browser exposing (Document)
-import Chart as C
-import Chart.Attributes as CA
 import Html as H exposing (Html)
 import Html.Attributes as HA
 import Html.Events as HE
@@ -40,16 +38,6 @@ main =
 init : () -> ( Model, Cmd Msg )
 init _ = ( { query = "", search_result = Loading } , getSearchResult "" )
 
-type alias Data = { x : String, y : Float }
-
-data : List Data
-data =
-    [ { x = "E0277", y = 16 }
-    , { x = "E0308", y = 10 }
-    , { x = "E0599", y = 39 }
-    , { x = "E0609", y = 3 }
-    ]
-
 view : Model -> Document Msg
 view model =
     { title = "Error Explorer"
@@ -57,30 +45,6 @@ view model =
         [ view_search model.search_result
         ]
     }
-view_graph : Html Msg
-view_graph =
-    H.div
-        []
-        [ H.text "Error Code Summary"
-        , H.div
-            [ HA.style "height" "300px"
-            , HA.style "width" "300px"
-            , HA.style "position" "absolute"
-            , HA.style "left" "50px"
-            ]
-            [ C.chart
-                [ CA.height 300
-                , CA.width 300
-                ]
-                [ C.binLabels .x [ CA.moveDown 20 ]
-                , C.yLabels [ CA.withGrid ]
-                , C.bars
-                    []
-                    [ C.bar .y [] ]
-                    data
-                ]
-            ]
-        ]
 
 view_search : SearchResult -> Html Msg
 view_search result =
@@ -108,7 +72,7 @@ view_search_result result =
 view_error_message : ErrorMessage -> Html Msg
 view_error_message { message, code } =
     H.tr
-        [ HA.class "error-message-row" ]
+        [ HA.class "error-message-row"  ]
         [ "error[E" ++ code ++ "]: " ++ message |> H.text ]
 
 update : Msg -> Model -> ( Model, Cmd Msg )
