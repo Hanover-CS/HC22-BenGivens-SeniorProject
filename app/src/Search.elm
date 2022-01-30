@@ -1,4 +1,4 @@
-module Search exposing (..)
+module Search exposing (Msg, Model, view, update, init)
 
 import Html as H exposing (Html)
 import Html.Attributes as HA

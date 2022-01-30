@@ -28,7 +28,7 @@ fn rocket() -> _ {
         .mount("/", routes![app_html, app_js, styles_css])
 }
 
-#[get("/")]
+#[get("/<_..>")]
 async fn app_html() -> Option<NamedFile> {
     NamedFile::open(relative!("app/app.html")).await.ok()
 }
