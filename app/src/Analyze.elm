@@ -1,4 +1,4 @@
-module Analyze exposing (view)
+module Analyze exposing (Msg, view)
 
 import Chart as C
 import Chart.Attributes as CA

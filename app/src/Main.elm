@@ -7,6 +7,7 @@ import Url.Parser exposing (Parser)
 import Html as H exposing (Html)
 import Html.Attributes as HA
 import Search
+import Analyze
 
 type alias Model =
     { page : Page
@@ -22,6 +23,7 @@ type Page
 
 type Msg
     = SearchMsg Search.Msg
+    | AnalyzeMsg Analyze.Msg
     | ClickedUrl UrlRequest
     | ChangedUrl Url
 
@@ -65,7 +67,7 @@ view_page page =
         Home -> H.text "TODO!"
         Search search_model -> Search.view search_model |> H.map SearchMsg
         Explore -> H.text "TODO!"
-        Analyze -> H.text "TODO!"
+        Analyze -> Analyze.view |> H.map AnalyzeMsg
         NotFound -> H.text "404: Page not found"
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -92,8 +94,9 @@ select_page model url =
 page_parser : Model -> Parser ( ( Model, Cmd Msg ) -> a ) a
 page_parser model =
     Url.Parser.oneOf
-        [ Url.Parser.map ( { model | page = Home }, Nav.pushUrl model.nav_key "/" ) (Url.Parser.top)
+        [ Url.Parser.map ( { model | page = Home }, Cmd.none ) (Url.Parser.top)
         , Url.Parser.map (map_search_update model Search.init) (Url.Parser.s "search")
+        , Url.Parser.map ( { model | page = Analyze }, Cmd.none ) (Url.Parser.s "analyze")
         ]
 
 map_search_update : Model -> ( Search.Model, Cmd Search.Msg ) -> ( Model, Cmd Msg )
