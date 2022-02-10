@@ -24,7 +24,7 @@ struct Message {
 fn rocket() -> _ {
     rocket::build()
         .attach(DatabaseConnection::fairing())
-        .mount("/api/", routes!(empty_search, search, force_graph))
+        .mount("/api/", routes!(empty_search, search, force_graph, frequency))
         .mount("/", routes![app_html, app_js, styles_css])
 }
 
@@ -46,7 +46,7 @@ async fn styles_css() -> Option<NamedFile> {
 #[get("/search")]
 async fn empty_search(conn: DatabaseConnection) -> Option<Json<String>> {
     let messages: Vec<Message> = conn.run(|conn| { 
-        let mut stmt = conn.prepare("SELECT code, message FROM error LIMIT 10")?;
+        let mut stmt = conn.prepare("SELECT code, message FROM error")?;
         let messages = stmt.query_map([], |row| Ok(
             Message {
             code: row.get(0)?,
@@ -71,7 +71,7 @@ async fn search(query: String, conn: DatabaseConnection) -> Option<Json<String>>
     let searcher = reader.searcher();
     let query = query_parser.parse_query(&query).ok()?;
     
-    let results = searcher.search(&query, &TopDocs::with_limit(10)).ok()?;
+    let results = searcher.search(&query, &TopDocs::with_limit(50)).ok()?;
     
     let mut messages: Vec<Message> = Vec::new();
     for (_score, address) in results {
@@ -130,7 +130,7 @@ fn create_search_index(conn: DatabaseConnection) -> SearchIndex {
 #[get("/force_graph")]
 async fn force_graph(conn: DatabaseConnection) -> Option<Json<String>> {
     let nodes: Vec<ForceNode> = conn.run(|conn| { 
-        let mut stmt = conn.prepare("SELECT id, code, message FROM error LIMIT 10")?;
+        let mut stmt = conn.prepare("SELECT id, code, message FROM error")?;
         let messages = stmt.query_map([], |row| Ok(
             ForceNode {
                 id: row.get(0)?,
@@ -192,4 +192,28 @@ fn distance(a: &Message, b: &Message) -> f64 {
     let message_similarity = distance::damerau_levenshtein(&a.message, &b.message) as f64;
 
     code_similarity * CODE_WEIGHT + message_similarity * MESSAGE_WEIGHT
+}
+
+#[derive(Serialize, Deserialize)]
+struct Frequency {
+    code: String,
+    count: usize,
+}
+
+#[get("/frequency")]
+async fn frequency(conn: DatabaseConnection) -> Option<Json<String>> {
+    let frequencies: Vec<Frequency> = conn.run(|conn| { 
+        let mut stmt = conn.prepare("SELECT code, COUNT(code) FROM error GROUP BY code")?;
+        let frequencies = stmt.query_map([], |row| Ok(
+            Frequency {
+                code: row.get(0)?,
+                count: row.get(1)?,
+            }     
+        ))?;
+        let frequencies: Result<Vec<Frequency>, rusqlite::Error> = frequencies.collect(); 
+        frequencies
+    }
+    ).await.ok()?;
+
+    Some(Json(serde_json::to_string_pretty(&frequencies).ok()?))
 }
