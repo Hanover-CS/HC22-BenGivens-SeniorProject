@@ -1,26 +1,53 @@
-module Analyze exposing (Msg, view)
+module Analyze exposing (Msg, Model, init, view, update)
 
 import Chart as C
 import Chart.Attributes as CA
 import Html as H exposing (Html)
 import Html.Attributes as HA
+import Http
+import Json.Decode as Decode exposing (Decoder)
 
-type alias Msg = ()
-type alias Data = { x : String, y : Float }
+type Msg
+    = GotFrequency (Result Http.Error (List Frequency))
+type alias Frequency = { code : String, count : Float }
 
-data : List Data
-data =
-    [ { x = "E0277", y = 16 }
-    , { x = "E0308", y = 10 }
-    , { x = "E0599", y = 39 }
-    , { x = "E0609", y = 3 }
-    ]
+type Model
+    = Loading
+    | Analyzing (List Frequency)    
 
-view : Html Msg
-view =
+init : ( Model, Cmd Msg )
+init =
+    ( Loading, getFrequency )
+
+getFrequency : Cmd Msg
+getFrequency =
+    Http.get
+        { url = "api/frequency"
+        , expect = Http.expectJson GotFrequency frequencyDecoder
+        }
+
+frequencyDecoder : Decoder (List Frequency)
+frequencyDecoder =
+    Decode.list
+        <| Decode.map2 Frequency
+            ( Decode.field "code" Decode.string )
+            ( Decode.field "count" Decode.float )
+
+view : Model -> Html Msg
+view model =
+    case model of
+        Loading -> viewLoading
+        Analyzing data -> viewFrequency data
+
+viewLoading : Html Msg
+viewLoading =
+    H.text "Loading"
+
+viewFrequency : List Frequency -> Html Msg
+viewFrequency data =
     H.div
         []
-        [ H.text "Error Code Summary"
+        [ H.text "Error Code Frequency"
         , H.div
             [ HA.style "height" "300px"
             , HA.style "width" "300px"
@@ -31,12 +58,19 @@ view =
                 [ CA.height 300
                 , CA.width 300
                 ]
-                [ C.binLabels .x [ CA.moveDown 20 ]
+                [ C.binLabels .code [ CA.moveDown 20 ]
                 , C.yLabels [ CA.withGrid ]
                 , C.bars
                     []
-                    [ C.bar .y [] ]
+                    [ C.bar .count [] ]
                     data
                 ]
             ]
         ]
+
+update : Msg -> Model -> ( Model, Cmd Msg )
+update msg model =
+    case msg of
+        GotFrequency (Ok frequency) -> ( Analyzing frequency, Cmd.none)
+        GotFrequency (Err _) -> ( Loading, Cmd.none )
+    

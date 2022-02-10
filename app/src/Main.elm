@@ -18,7 +18,7 @@ type alias Model =
 type Page
     = Home
     | Search Search.Model
-    | Analyze
+    | Analyze Analyze.Model
     | Explore Explore.Model
     | NotFound
 
@@ -68,7 +68,7 @@ view_page page =
     case page of
         Home -> H.text "TODO!"
         Search search_model -> Search.view search_model |> H.map SearchMsg
-        Analyze -> Analyze.view |> H.map AnalyzeMsg
+        Analyze analyze_model -> Analyze.view analyze_model |> H.map AnalyzeMsg
         Explore explore_model -> Explore.view explore_model |> H.map ExploreMsg
         NotFound -> H.text "404: Page not found"
 
@@ -81,6 +81,9 @@ update msg model =
         ( ExploreMsg explore_msg, Explore explore_model ) ->
             Explore.update explore_msg explore_model
                 |> map_explore_update model
+        ( AnalyzeMsg analyze_msg, Analyze analyze_model ) ->
+            Analyze.update analyze_msg analyze_model
+                |> map_analyze_update model
         ( ClickedUrl url_request, _ ) ->
             case url_request of
                 Internal url -> select_page model url
@@ -101,13 +104,17 @@ page_parser model =
     Url.Parser.oneOf
         [ Url.Parser.map ( { model | page = Home }, Cmd.none ) (Url.Parser.top)
         , Url.Parser.map (map_search_update model Search.init) (Url.Parser.s "search")
-        , Url.Parser.map ( { model | page = Analyze }, Cmd.none ) (Url.Parser.s "analyze")
+        , Url.Parser.map (map_analyze_update model Analyze.init) (Url.Parser.s "analyze")
         , Url.Parser.map (map_explore_update model Explore.init) (Url.Parser.s "explore")
         ]
 
 map_search_update : Model -> ( Search.Model, Cmd Search.Msg ) -> ( Model, Cmd Msg )
 map_search_update model ( search_model, search_msg ) =
     ( { model | page = Search search_model }, Cmd.map SearchMsg search_msg )
+
+map_analyze_update : Model -> ( Analyze.Model, Cmd Analyze.Msg ) -> ( Model, Cmd Msg )
+map_analyze_update model ( analyze_model, analyze_msg ) =
+    ( { model | page = Analyze analyze_model }, Cmd.map AnalyzeMsg analyze_msg )
 
 map_explore_update : Model -> ( Explore.Model, Cmd Explore.Msg ) -> ( Model, Cmd Msg )
 map_explore_update model ( explore_model, explore_msg ) =
