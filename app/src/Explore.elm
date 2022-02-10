@@ -1,15 +1,33 @@
 module Explore exposing (..)
 
 import Html as H exposing (Html)
+import TypedSvg as S
+import TypedSvg.Core as SC exposing (Svg)
+import TypedSvg.Attributes as SA
+import TypedSvg.Types exposing (Paint(..), Length(..))
+import Color
 import Http
 import Json.Decode as Decode exposing (Decoder)
+import Force exposing (Entity, entity)
+import Time
+import Browser.Events
 
-type Msg =
-    GotGraph (Result Http.Error Graph)
+w : Float
+w = 900
+
+h : Float
+h = 504
+
+type Msg
+    = GotGraph (Result Http.Error Graph)
+    | Tick Time.Posix
 
 type Model
     = Loading
-    | Value { graph: Graph }
+    | Exploring
+        { entities: List (Entity Int { value: ErrorMessage })
+        , simulation: Force.State Int
+        }
 
 type alias Graph =
     { nodes: List Node
@@ -29,7 +47,7 @@ type alias ErrorMessage =
 type alias Edge =
     { a_id: Int
     , b_id: Int
-    , distance: Int
+    , distance: Float
     }
 
 init : ( Model, Cmd Msg )
@@ -40,18 +58,61 @@ view : Model -> Html Msg
 view model =
     case model of
         Loading -> H.text "Loading..."
-        Value { graph } ->
-            case List.head graph.nodes of
-                Just node -> node.message.message |> H.text
-                Nothing -> H.text "Didn't really load"
+        Exploring { entities } ->
+            S.svg [ SA.viewBox 0 0 w h ]
+                [ S.g
+                    [ SA.class [ "nodes" ] ]
+                    (List.map viewEntity entities)
+                ]
+
+viewEntity : Entity Int { value: ErrorMessage } -> Svg Msg
+viewEntity entity =
+    S.circle
+        [ SA.r (Px 2.5)
+        , SA.fill (Paint Color.black)
+        , SA.stroke (Paint <| Color.rgba 0 0 0 0)
+        , SA.strokeWidth (Px 7)
+        , SA.cx (Px entity.x)
+        , SA.cy (Px entity.y)
+        ]
+        [ S.title [] [ SC.text entity.value.code ] ]
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-    case msg of
-        GotGraph (Ok graph) ->
-            ( Value { graph = graph }, Cmd.none )
-        GotGraph (Err e) ->
+    case (msg, model) of
+        (GotGraph (Ok graph), Loading) ->
+            ( initializeExploring graph, Cmd.none )
+        (GotGraph (Err e), Loading) ->
             ( model, Cmd.none )
+        (Tick _, Exploring { entities, simulation }) ->
+            let ( newState, newEntities ) = Force.tick simulation <| entities
+            in
+                ( Exploring { entities = newEntities, simulation = newState }, Cmd.none )
+        _ -> ( model, Cmd.none )
+
+initializeExploring : Graph -> Model
+initializeExploring graph =
+    let
+        entities = List.map (\node -> entity node.id node.message) graph.nodes
+
+        {- NOTE TO SELF: Might need to manually add equal + opposite force for each link-}
+        edgeToLink { a_id, b_id, distance } =
+            { source = a_id 
+            , target = b_id
+            , distance = distance
+            , strength = Nothing
+            }
+
+        links = List.map edgeToLink graph.edges
+
+        simulation =
+            Force.simulation
+                [ Force.customLinks 1 links
+                , Force.manyBody <| List.map .id graph.nodes
+                , Force.center (w / 2) (h / 2)
+                ]
+    in
+        Exploring { entities = entities, simulation = simulation }
 
 getGraph : Cmd Msg
 getGraph =
@@ -83,4 +144,8 @@ edgeDecoder =
     Decode.map3 Edge
         ( Decode.field "a_id" Decode.int )
         ( Decode.field "b_id" Decode.int )
-        ( Decode.field "distance" Decode.int )
+        ( Decode.field "distance" Decode.float )
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    Browser.Events.onAnimationFrame Tick

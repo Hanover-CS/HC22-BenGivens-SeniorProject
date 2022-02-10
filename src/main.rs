@@ -181,15 +181,15 @@ struct ForceNode {
 struct ForceEdge {
     a_id: usize,
     b_id: usize,
-    distance: usize,
+    distance: f64,
 }
 
-fn distance(a: &Message, b: &Message) -> usize {
-    const CODE_WEIGHT: usize = 10;
-    const MESSAGE_WEIGHT: usize = 1;
+fn distance(a: &Message, b: &Message) -> f64 {
+    const CODE_WEIGHT: f64 = 1.0;
+    const MESSAGE_WEIGHT: f64 = 0.1;
     
-    let code_similarity = distance::damerau_levenshtein(&a.code, &b.code);
-    let message_similarity = distance::damerau_levenshtein(&a.message, &b.message);
+    let code_similarity = distance::damerau_levenshtein(&a.code, &b.code) as f64;
+    let message_similarity = distance::damerau_levenshtein(&a.message, &b.message) as f64;
 
     code_similarity * CODE_WEIGHT + message_similarity * MESSAGE_WEIGHT
 }

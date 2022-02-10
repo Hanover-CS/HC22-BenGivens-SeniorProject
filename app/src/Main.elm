@@ -115,4 +115,6 @@ map_explore_update model ( explore_model, explore_msg ) =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    Sub.none
+    case model.page of
+        Explore e -> Explore.subscriptions e |> Sub.map ExploreMsg 
+        _ -> Sub.none
