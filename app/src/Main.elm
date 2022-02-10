@@ -8,6 +8,7 @@ import Html as H exposing (Html)
 import Html.Attributes as HA
 import Search
 import Analyze
+import Explore
 
 type alias Model =
     { page : Page
@@ -17,13 +18,14 @@ type alias Model =
 type Page
     = Home
     | Search Search.Model
-    | Explore
     | Analyze
+    | Explore Explore.Model
     | NotFound
 
 type Msg
     = SearchMsg Search.Msg
     | AnalyzeMsg Analyze.Msg
+    | ExploreMsg Explore.Msg
     | ClickedUrl UrlRequest
     | ChangedUrl Url
 
@@ -66,8 +68,8 @@ view_page page =
     case page of
         Home -> H.text "TODO!"
         Search search_model -> Search.view search_model |> H.map SearchMsg
-        Explore -> H.text "TODO!"
         Analyze -> Analyze.view |> H.map AnalyzeMsg
+        Explore explore_model -> Explore.view explore_model |> H.map ExploreMsg
         NotFound -> H.text "404: Page not found"
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -76,6 +78,9 @@ update msg model =
         ( SearchMsg search_msg, Search search_model ) ->
             Search.update search_msg search_model
                 |> map_search_update model
+        ( ExploreMsg explore_msg, Explore explore_model ) ->
+            Explore.update explore_msg explore_model
+                |> map_explore_update model
         ( ClickedUrl url_request, _ ) ->
             case url_request of
                 Internal url -> select_page model url
@@ -97,11 +102,16 @@ page_parser model =
         [ Url.Parser.map ( { model | page = Home }, Cmd.none ) (Url.Parser.top)
         , Url.Parser.map (map_search_update model Search.init) (Url.Parser.s "search")
         , Url.Parser.map ( { model | page = Analyze }, Cmd.none ) (Url.Parser.s "analyze")
+        , Url.Parser.map (map_explore_update model Explore.init) (Url.Parser.s "explore")
         ]
 
 map_search_update : Model -> ( Search.Model, Cmd Search.Msg ) -> ( Model, Cmd Msg )
 map_search_update model ( search_model, search_msg ) =
     ( { model | page = Search search_model }, Cmd.map SearchMsg search_msg )
+
+map_explore_update : Model -> ( Explore.Model, Cmd Explore.Msg ) -> ( Model, Cmd Msg )
+map_explore_update model ( explore_model, explore_msg ) =
+    ( { model | page = Explore explore_model }, Cmd.map ExploreMsg explore_msg )
 
 subscriptions : Model -> Sub Msg
 subscriptions model =

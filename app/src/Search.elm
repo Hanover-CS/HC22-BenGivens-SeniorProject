@@ -58,7 +58,7 @@ view_error_message { message, code } =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        UpdateQuery query -> ( { model | query = query, search_result = Loading }, getSearchResult query)
+        UpdateQuery query -> ( { model | query = query, search_result = Loading }, getSearchResult query )
         GotSearchResult (Ok result) -> ( { model | search_result = Value result }, Cmd.none )
         GotSearchResult (Err _) -> ( { model | search_result = SearchError }, Cmd.none )
 
