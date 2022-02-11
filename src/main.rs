@@ -24,7 +24,7 @@ struct Message {
 fn rocket() -> _ {
     rocket::build()
         .attach(DatabaseConnection::fairing())
-        .mount("/api/", routes!(empty_search, search, force_graph, frequency))
+        .mount("/api/", routes!(empty_search, search, force_graph, frequency, length))
         .mount("/", routes![app_html, app_js, styles_css])
 }
 
@@ -216,4 +216,17 @@ async fn frequency(conn: DatabaseConnection) -> Option<Json<String>> {
     ).await.ok()?;
 
     Some(Json(serde_json::to_string_pretty(&frequencies).ok()?))
+}
+
+#[get("/length")]
+async fn length(conn: DatabaseConnection) -> Option<Json<String>> {
+    let lengths: Vec<usize> = conn.run(|conn| { 
+        let mut stmt = conn.prepare("SELECT LENGTH(message) FROM error")?;
+        let lengths = stmt.query_map([], |row| Ok(row.get(0)?))?;
+        let lengths : Result<Vec<usize>, rusqlite::Error> = lengths.collect();
+        lengths
+    }
+    ).await.ok()?;
+
+    Some(Json(serde_json::to_string_pretty(&lengths).ok()?))
 }
