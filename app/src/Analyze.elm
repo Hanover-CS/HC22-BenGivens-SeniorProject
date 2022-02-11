@@ -58,7 +58,7 @@ viewFrequency data =
                 [ CA.height 300
                 , CA.width 300
                 ]
-                [ C.binLabels .code [ CA.moveDown 20 ]
+                [ C.binLabels (.code >> (\code -> "E" ++ code)) [ CA.moveDown 20 ]
                 , C.yLabels [ CA.withGrid ]
                 , C.bars
                     []
