@@ -45,8 +45,8 @@ type alias ErrorMessage =
     }
 
 type alias Edge =
-    { a_id: Int
-    , b_id: Int
+    { aId: Int
+    , bId: Int
     , distance: Float
     }
 
@@ -95,10 +95,9 @@ initializeExploring graph =
     let
         entities = List.map (\node -> entity node.id node.message) graph.nodes
 
-        {- NOTE TO SELF: Might need to manually add equal + opposite force for each link-}
-        edgeToLink { a_id, b_id, distance } =
-            { source = a_id 
-            , target = b_id
+        edgeToLink { aId, bId, distance } =
+            { source = aId 
+            , target = bId
             , distance = distance
             , strength = Nothing
             }
