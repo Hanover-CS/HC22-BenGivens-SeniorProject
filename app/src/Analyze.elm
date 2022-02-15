@@ -106,7 +106,7 @@ viewLengths : List Float -> Html Msg
 viewLengths lengths =
     H.div
         [ HA.style "margin" "50px" ]
-        [ H.text "Error Code Length"
+        [ H.text "Error Message Length"
         , H.div
             [ HA.style "height" "300px"
             , HA.style "width" "300px"

@@ -5,12 +5,13 @@ import TypedSvg as S
 import TypedSvg.Core as SC exposing (Svg)
 import TypedSvg.Attributes as SA
 import TypedSvg.Types exposing (Paint(..), Length(..))
-import Color
+import Color exposing (Color)
 import Http
 import Json.Decode as Decode exposing (Decoder)
 import Force exposing (Entity, entity)
 import Time
 import Browser.Events
+import Array
 
 w : Float
 w = 900
@@ -69,13 +70,18 @@ viewEntity : Entity Int { value: ErrorMessage } -> Svg Msg
 viewEntity entity =
     S.circle
         [ SA.r (Px 2.5)
-        , SA.fill (Paint Color.black)
+        , SA.fill (Paint <| nodeColor <| Maybe.withDefault -1 <| String.toInt entity.value.code)
         , SA.stroke (Paint <| Color.rgba 0 0 0 0)
         , SA.strokeWidth (Px 7)
         , SA.cx (Px entity.x)
         , SA.cy (Px entity.y)
         ]
         [ S.title [] [ SC.text entity.value.code ] ]
+
+nodeColor : Int -> Color
+nodeColor errorCode =
+    let colors = Array.fromList [ Color.blue, Color.red, Color.orange, Color.green, Color.purple, Color.lightBlue ]
+    in Array.get (errorCode |> modBy (Array.length colors)) colors |> Maybe.withDefault Color.black
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
