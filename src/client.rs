@@ -1,5 +1,5 @@
 use rocket::fs::{relative, NamedFile};
-use rocket::{get, Route, routes};
+use rocket::{get, routes, Route};
 
 pub fn routes() -> Vec<Route> {
     routes![app_html, app_js, styles_css]

@@ -1,5 +1,5 @@
-mod client;
 mod api;
+mod client;
 mod database;
 
 use rocket::launch;
