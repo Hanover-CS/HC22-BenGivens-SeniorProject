@@ -222,17 +222,15 @@ fn frequencies_query(conn: &mut rusqlite::Connection) -> rusqlite::Result<Vec<Fr
 
 #[get("/length")]
 async fn length(conn: database::Connection) -> Option<Json<String>> {
-    let lengths: Vec<usize> = conn
-        .run(|conn| {
-            let mut stmt = conn.prepare("SELECT LENGTH(message) FROM error")?;
-            let lengths = stmt.query_map([], |row| Ok(row.get(0)?))?;
-            let lengths: Result<Vec<usize>, rusqlite::Error> = lengths.collect();
-            lengths
-        })
-        .await
-        .ok()?;
+    let lengths: Vec<usize> = conn.run(lengths_query).await.ok()?;
 
     Some(Json(serde_json::to_string_pretty(&lengths).ok()?))
+}
+
+fn lengths_query(conn: &mut rusqlite::Connection) -> rusqlite::Result<Vec<usize>> {
+    let mut stmt = conn.prepare("SELECT LENGTH(message) FROM error")?;
+    let lengths = stmt.query_map([], |row| Ok(row.get(0)?))?;
+    lengths.collect()
 }
 
 #[cfg(test)]
@@ -451,6 +449,35 @@ mod tests {
         frequencies.sort();
         expected_frequencies.sort();
         assert_eq!(frequencies, expected_frequencies);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_lengths_query() -> Result<(), Box<dyn Error>> {
+        let messages = vec![
+            Message {
+                code: "0001".to_string(),
+                message: "1234567".to_string(),
+            },
+            Message {
+                code: "0001".to_string(),
+                message: "".to_string(),
+            },
+            Message {
+                code: "0002".to_string(),
+                message: "123456789".to_string(),
+            },
+        ];
+        let mut conn = in_memory_database(messages)?;
+
+        let mut lengths = lengths_query(&mut conn)?;
+        let mut expected_lengths = vec![
+            7, 0, 9
+        ];
+        lengths.sort();
+        expected_lengths.sort();
+        assert_eq!(lengths, expected_lengths);
 
         Ok(())
     }
