@@ -1,3 +1,9 @@
+/// The api module handles requests made by the client, by making the appropriate
+/// database or search query and possibly doing some extra computation.
+/// The information is sent to the client as JSON. Serialization of the data is
+/// handled by the serde library. The database connected using rusqlite, with
+/// connection pooling from rocket. Search is powered by the tantivy library.
+
 use crate::database;
 use once_cell::sync::OnceCell;
 use rocket::response::content::Json;

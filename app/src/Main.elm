@@ -1,5 +1,10 @@
 module Main exposing (..)
 
+{-| The Main module contains the main function which serves
+    as the entry point for the client. It responsible for
+    handling page navigation and delegating to the other modules.
+-}
+
 import Browser exposing (Document, UrlRequest(..))
 import Browser.Navigation as Nav
 import Url exposing (Url)
