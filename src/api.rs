@@ -203,7 +203,7 @@ fn distance(a: &Message, b: &Message) -> f64 {
     code_similarity * CODE_WEIGHT + message_similarity * MESSAGE_WEIGHT
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Debug)]
 struct Frequency {
     code: String,
     count: usize,
@@ -212,21 +212,22 @@ struct Frequency {
 #[get("/frequency")]
 async fn frequency(conn: database::Connection) -> Option<Json<String>> {
     let frequencies: Vec<Frequency> = conn
-        .run(|conn| {
-            let mut stmt = conn.prepare("SELECT code, COUNT(code) FROM error GROUP BY code")?;
-            let frequencies = stmt.query_map([], |row| {
-                Ok(Frequency {
-                    code: row.get(0)?,
-                    count: row.get(1)?,
-                })
-            })?;
-            let frequencies: Result<Vec<Frequency>, rusqlite::Error> = frequencies.collect();
-            frequencies
-        })
+        .run(get_frequencies)
         .await
         .ok()?;
 
     Some(Json(serde_json::to_string_pretty(&frequencies).ok()?))
+}
+
+fn get_frequencies(conn: &mut rusqlite::Connection) -> rusqlite::Result<Vec<Frequency>> {
+    let mut stmt = conn.prepare("SELECT code, COUNT(code) FROM error GROUP BY code")?;
+    let frequencies = stmt.query_map([], |row| {
+        Ok(Frequency {
+            code: row.get(0)?,
+            count: row.get(1)?,
+        })
+    })?;
+    frequencies.collect()
 }
 
 #[get("/length")]
@@ -242,4 +243,56 @@ async fn length(conn: database::Connection) -> Option<Json<String>> {
         .ok()?;
 
     Some(Json(serde_json::to_string_pretty(&lengths).ok()?))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::error::Error;
+
+    fn in_memory_database(messages: impl IntoIterator<Item = Message>) -> rusqlite::Result<rusqlite::Connection> {
+        let conn = rusqlite::Connection::open_in_memory()?;
+
+        conn.execute(
+            "CREATE TABLE error (
+                    id INTEGER PRIMARY KEY,
+                    code TEXT NOT NULL,
+                    message TEXT NOT NULL
+                )",
+            [],
+        )?;
+
+        for message in messages.into_iter() {
+            conn.execute(
+                "INSERT INTO error (code, message) VALUES (?1, ?2)",
+                [message.code, message.message]
+            )?;
+        }
+        
+        Ok(conn)
+    }
+
+    #[test]
+    fn test_frequencies() -> Result<(), Box<dyn Error>> {
+        let messages =
+            vec![ Message { code: "0001".to_string(), message: "message1".to_string() }
+            , Message { code: "0001".to_string(), message: "message2".to_string() }
+            , Message { code: "0001".to_string(), message: "message3".to_string() }
+            , Message { code: "0002".to_string(), message: "message4".to_string() }
+            , Message { code: "0003".to_string(), message: "message5".to_string() }
+            ];
+        let mut conn = in_memory_database(messages)?;
+        
+        let mut frequencies = get_frequencies(&mut conn)?;
+        let mut expected_frequencies =
+            vec![ Frequency { code: "0001".to_string(), count: 3 }
+            , Frequency { code: "0002".to_string(), count: 1 }
+            , Frequency { code: "0003".to_string(), count: 1 }
+            ];
+        frequencies.sort();
+        expected_frequencies.sort();
+        assert_eq!(frequencies, expected_frequencies);
+
+        Ok(())
+    }
 }
