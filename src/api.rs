@@ -125,36 +125,11 @@ fn create_search_index(conn: database::Connection) -> SearchIndex {
 
 #[get("/force_graph")]
 async fn force_graph(conn: database::Connection) -> Option<Json<String>> {
-    let nodes: Vec<ForceNode> = conn
-        .run(|conn| {
-            let mut stmt = conn.prepare("SELECT id, code, message FROM error")?;
-            let messages = stmt.query_map([], |row| {
-                Ok(ForceNode {
-                    id: row.get(0)?,
-                    message: Message {
-                        code: row.get(1)?,
-                        message: row.get(2)?,
-                    },
-                })
-            })?;
-            let nodes: Result<Vec<ForceNode>, rusqlite::Error> = messages.collect();
-            nodes
-        })
-        .await
-        .ok()?;
+    let nodes: Vec<ForceNode> = conn.run(all_nodes_query).await.ok()?;
 
-    let (nodes, edges) = tokio::task::spawn_blocking(move || {
-        let mut edges = Vec::new();
-        for (i, node_a) in nodes.iter().enumerate() {
-            for node_b in nodes.iter().skip(i + 1) {
-                edges.push(ForceEdge {
-                    a_id: node_a.id,
-                    b_id: node_b.id,
-                    distance: distance(&node_a.message, &node_b.message),
-                });
-            }
-        }
-        (nodes, edges)
+    let edges = tokio::task::spawn_blocking({
+        let nodes = nodes.clone();
+        || compute_force_edges(nodes)
     })
     .await
     .ok()?;
@@ -164,19 +139,47 @@ async fn force_graph(conn: database::Connection) -> Option<Json<String>> {
     Some(Json(serde_json::to_string_pretty(&graph).ok()?))
 }
 
+fn all_nodes_query(conn: &mut rusqlite::Connection) -> rusqlite::Result<Vec<ForceNode>> {
+    let mut stmt = conn.prepare("SELECT id, code, message FROM error")?;
+    let nodes = stmt.query_map([], |row| {
+        Ok(ForceNode {
+            id: row.get(0)?,
+            message: Message {
+                code: row.get(1)?,
+                message: row.get(2)?,
+            },
+        })
+    })?;
+    nodes.collect()
+}
+
+fn compute_force_edges(nodes: Vec<ForceNode>) -> Vec<ForceEdge> {
+    let mut edges = Vec::new();
+    for (i, node_a) in nodes.iter().enumerate() {
+        for node_b in nodes.iter().skip(i + 1) {
+            edges.push(ForceEdge {
+                a_id: node_a.id,
+                b_id: node_b.id,
+                distance: distance(&node_a.message, &node_b.message),
+            });
+        }
+    }
+    edges
+}
+
 #[derive(Serialize, Deserialize)]
 struct ForceGraph {
     nodes: Vec<ForceNode>,
     edges: Vec<ForceEdge>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
 struct ForceNode {
     id: usize,
     message: Message,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, PartialOrd)]
 struct ForceEdge {
     a_id: usize,
     b_id: usize,
@@ -291,6 +294,115 @@ mod tests {
         messages.sort();
         expected_messages.sort();
         assert_eq!(messages, expected_messages);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_all_nodes_query() -> Result<(), Box<dyn Error>> {
+        let messages = vec![
+            Message {
+                code: "0001".to_string(),
+                message: "message1".to_string(),
+            },
+            Message {
+                code: "0001".to_string(),
+                message: "message2".to_string(),
+            },
+            Message {
+                code: "0001".to_string(),
+                message: "message3".to_string(),
+            },
+            Message {
+                code: "0002".to_string(),
+                message: "message4".to_string(),
+            },
+            Message {
+                code: "0003".to_string(),
+                message: "message5".to_string(),
+            },
+        ];
+        let mut conn = in_memory_database(messages.clone())?;
+
+        let mut nodes = all_nodes_query(&mut conn)?;
+        let mut expected_nodes = vec![
+            ForceNode {
+                id: 1,
+                message: messages[0].clone(),
+            },
+            ForceNode {
+                id: 2,
+                message: messages[1].clone(),
+            },
+            ForceNode {
+                id: 3,
+                message: messages[2].clone(),
+            },
+            ForceNode {
+                id: 4,
+                message: messages[3].clone(),
+            },
+            ForceNode {
+                id: 5,
+                message: messages[4].clone(),
+            },
+        ];
+        nodes.sort();
+        expected_nodes.sort();
+        assert_eq!(nodes, expected_nodes);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_compute_force_edges() -> Result<(), Box<dyn Error>> {
+        let nodes = vec![
+            ForceNode {
+                id: 1,
+                message: Message {
+                    code: "0001".to_string(),
+                    message: "a".to_string(),
+                },
+            },
+            ForceNode {
+                id: 2,
+                message: Message {
+                    code: "0001".to_string(),
+                    message: "b".to_string(),
+                },
+            },
+            ForceNode {
+                id: 3,
+                message: Message {
+                    code: "0002".to_string(),
+                    message: "a".to_string(),
+                },
+            },
+        ];
+
+        let mut edges = compute_force_edges(nodes.clone());
+        let mut expected_edges = vec![
+            ForceEdge {
+                a_id: 1,
+                b_id: 2,
+                distance: 0.1,
+            },
+            ForceEdge {
+                a_id: 1,
+                b_id: 3,
+                distance: 1.0,
+            },
+            ForceEdge {
+                a_id: 2,
+                b_id: 3,
+                distance: 1.1,
+            },
+        ];
+        let key = |edge: &ForceEdge| (edge.a_id, edge.b_id);
+        edges.sort_by_key(key);
+        expected_edges.sort_by_key(key);
+
+        assert_eq!(edges, expected_edges);
 
         Ok(())
     }

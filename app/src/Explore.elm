@@ -80,7 +80,20 @@ viewEntity entity =
 
 nodeColor : Int -> Color
 nodeColor errorCode =
-    let colors = Array.fromList [ Color.blue, Color.red, Color.orange, Color.green, Color.purple, Color.lightBlue ]
+    let colors =
+            Array.fromList
+                [ Color.blue
+                , Color.red
+                , Color.orange
+                , Color.green
+                , Color.purple
+                , Color.lightBlue
+                , Color.lightGreen
+                , Color.lightRed
+                , Color.darkGreen
+                , Color.darkPurple
+                , Color.darkCharcoal
+                ]
     in Array.get (errorCode |> modBy (Array.length colors)) colors |> Maybe.withDefault Color.black
 
 update : Msg -> Model -> ( Model, Cmd Msg )
