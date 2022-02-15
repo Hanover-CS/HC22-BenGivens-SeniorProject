@@ -15,6 +15,9 @@ import Search
 import Analyze
 import Explore
 
+{-| The Model type represents the current state of the application. The main
+    module uses this to know which page to render.
+-}
 type alias Model =
     { page : Page
     , navKey : Nav.Key
@@ -27,6 +30,11 @@ type Page
     | Explore Explore.Model
     | NotFound
 
+{-| The Msg type represents messages to the update function describing how
+    you want the model to change or how the application should access the
+    outside world. The main module mostly handles correctly dispatching
+    each page's Msg's and navigation events from the outside world.
+-}
 type Msg
     = SearchMsg Search.Msg
     | AnalyzeMsg Analyze.Msg
@@ -34,6 +42,12 @@ type Msg
     | ClickedUrl UrlRequest
     | ChangedUrl Url
 
+{-| Elm programs follow The Elm Architecture (TEA). It is composed of
+    two types (Model and Msg) and four functions (init, view, update,
+    and subscriptions). Like Haskell, Elm requires that all functions
+    are pure (have no side effects). TEA provides a way of building
+    web applications in a reasonable way with that restriction.
+-}
 main : Program () Model Msg
 main =
     Browser.application
@@ -45,10 +59,18 @@ main =
         , onUrlChange = ChangedUrl
         }
 
+{-| The init function gives the initial state of the application. In
+    this case the page defaults to NotFound and looks up the appropriate
+    page based on the URL.
+-}
 init : () -> Url -> Nav.Key -> ( Model, Cmd Msg)
 init _ url navKey =
     selectPage { navKey = navKey, page = NotFound } url
 
+{-| The view function renders the model which is purely data as Html.
+    The main purpose of the Main module is to delegate to the view
+    functions of the other modules when that page is selected.
+-}
 view : Model -> Document Msg
 view model =
     { title = "Error Explorer"
@@ -77,6 +99,11 @@ viewPage page =
         Explore exploreModel -> Explore.view exploreModel |> H.map ExploreMsg
         NotFound -> H.text "404: Page not found"
 
+{-| The update function processes messages and returns what
+    the new model should be, as well as any Cmd's. Cmd's are
+    how Elm represents interacting with the outside (impure) world
+    (e.g. HTTP requests or randomness).
+-}
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case ( msg, model.page ) of
@@ -125,6 +152,10 @@ mapExploreUpdate : Model -> ( Explore.Model, Cmd Explore.Msg ) -> ( Model, Cmd M
 mapExploreUpdate model ( exploreModel, exploreMsg ) =
     ( { model | page = Explore exploreModel }, Cmd.map ExploreMsg exploreMsg )
 
+{-| Subscriptions are how you request that the outside world
+    send messages to the update function when an event happens.
+    In this case, only the explore page uses this feature.
+-}
 subscriptions : Model -> Sub Msg
 subscriptions model =
     case model.page of
