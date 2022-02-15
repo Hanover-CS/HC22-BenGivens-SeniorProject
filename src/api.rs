@@ -15,7 +15,7 @@ pub fn routes() -> Vec<Route> {
     routes!(empty_search, search, force_graph, frequency, length)
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
 struct Message {
     code: String,
     message: String,
@@ -23,22 +23,20 @@ struct Message {
 
 #[get("/search")]
 async fn empty_search(conn: database::Connection) -> Option<Json<String>> {
-    let messages: Vec<Message> = conn
-        .run(|conn| {
-            let mut stmt = conn.prepare("SELECT code, message FROM error")?;
-            let messages = stmt.query_map([], |row| {
-                Ok(Message {
-                    code: row.get(0)?,
-                    message: row.get(1)?,
-                })
-            })?;
-            let messages: Result<Vec<Message>, rusqlite::Error> = messages.collect();
-            messages
-        })
-        .await
-        .ok()?;
+    let messages: Vec<Message> = conn.run(all_messages_query).await.ok()?;
 
     Some(Json(serde_json::to_string_pretty(&messages).ok()?))
+}
+
+fn all_messages_query(conn: &mut rusqlite::Connection) -> rusqlite::Result<Vec<Message>> {
+    let mut stmt = conn.prepare("SELECT code, message FROM error")?;
+    let messages = stmt.query_map([], |row| {
+        Ok(Message {
+            code: row.get(0)?,
+            message: row.get(1)?,
+        })
+    })?;
+    messages.collect()
 }
 
 #[get("/search/<query>")]
@@ -211,15 +209,12 @@ struct Frequency {
 
 #[get("/frequency")]
 async fn frequency(conn: database::Connection) -> Option<Json<String>> {
-    let frequencies: Vec<Frequency> = conn
-        .run(get_frequencies)
-        .await
-        .ok()?;
+    let frequencies: Vec<Frequency> = conn.run(frequencies_query).await.ok()?;
 
     Some(Json(serde_json::to_string_pretty(&frequencies).ok()?))
 }
 
-fn get_frequencies(conn: &mut rusqlite::Connection) -> rusqlite::Result<Vec<Frequency>> {
+fn frequencies_query(conn: &mut rusqlite::Connection) -> rusqlite::Result<Vec<Frequency>> {
     let mut stmt = conn.prepare("SELECT code, COUNT(code) FROM error GROUP BY code")?;
     let frequencies = stmt.query_map([], |row| {
         Ok(Frequency {
@@ -250,7 +245,9 @@ mod tests {
     use super::*;
     use std::error::Error;
 
-    fn in_memory_database(messages: impl IntoIterator<Item = Message>) -> rusqlite::Result<rusqlite::Connection> {
+    fn in_memory_database(
+        messages: impl IntoIterator<Item = Message>,
+    ) -> rusqlite::Result<rusqlite::Connection> {
         let conn = rusqlite::Connection::open_in_memory()?;
 
         conn.execute(
@@ -265,30 +262,88 @@ mod tests {
         for message in messages.into_iter() {
             conn.execute(
                 "INSERT INTO error (code, message) VALUES (?1, ?2)",
-                [message.code, message.message]
+                [message.code, message.message],
             )?;
         }
-        
+
         Ok(conn)
     }
 
     #[test]
-    fn test_frequencies() -> Result<(), Box<dyn Error>> {
-        let messages =
-            vec![ Message { code: "0001".to_string(), message: "message1".to_string() }
-            , Message { code: "0001".to_string(), message: "message2".to_string() }
-            , Message { code: "0001".to_string(), message: "message3".to_string() }
-            , Message { code: "0002".to_string(), message: "message4".to_string() }
-            , Message { code: "0003".to_string(), message: "message5".to_string() }
-            ];
+    fn test_all_messages_query() -> Result<(), Box<dyn Error>> {
+        let mut expected_messages = vec![
+            Message {
+                code: "0001".to_string(),
+                message: "message1".to_string(),
+            },
+            Message {
+                code: "0001".to_string(),
+                message: "message2".to_string(),
+            },
+            Message {
+                code: "0001".to_string(),
+                message: "message3".to_string(),
+            },
+            Message {
+                code: "0002".to_string(),
+                message: "message4".to_string(),
+            },
+            Message {
+                code: "0003".to_string(),
+                message: "message5".to_string(),
+            },
+        ];
+        let mut conn = in_memory_database(expected_messages.clone())?;
+
+        let mut messages = all_messages_query(&mut conn)?;
+        messages.sort();
+        expected_messages.sort();
+        assert_eq!(messages, expected_messages);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_frequencies_query() -> Result<(), Box<dyn Error>> {
+        let messages = vec![
+            Message {
+                code: "0001".to_string(),
+                message: "message1".to_string(),
+            },
+            Message {
+                code: "0001".to_string(),
+                message: "message2".to_string(),
+            },
+            Message {
+                code: "0001".to_string(),
+                message: "message3".to_string(),
+            },
+            Message {
+                code: "0002".to_string(),
+                message: "message4".to_string(),
+            },
+            Message {
+                code: "0003".to_string(),
+                message: "message5".to_string(),
+            },
+        ];
         let mut conn = in_memory_database(messages)?;
-        
-        let mut frequencies = get_frequencies(&mut conn)?;
-        let mut expected_frequencies =
-            vec![ Frequency { code: "0001".to_string(), count: 3 }
-            , Frequency { code: "0002".to_string(), count: 1 }
-            , Frequency { code: "0003".to_string(), count: 1 }
-            ];
+
+        let mut frequencies = frequencies_query(&mut conn)?;
+        let mut expected_frequencies = vec![
+            Frequency {
+                code: "0001".to_string(),
+                count: 3,
+            },
+            Frequency {
+                code: "0002".to_string(),
+                count: 1,
+            },
+            Frequency {
+                code: "0003".to_string(),
+                count: 1,
+            },
+        ];
         frequencies.sort();
         expected_frequencies.sort();
         assert_eq!(frequencies, expected_frequencies);
