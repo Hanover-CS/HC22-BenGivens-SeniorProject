@@ -89,8 +89,10 @@ fn create_search_index(conn: database::Connection) -> SearchIndex {
 
     let index = Index::create_in_dir(&index_directory, schema.clone())
         .expect("Database search index error. Failed to create index in directory.");
+
+    const HEAP_SIZE: usize = 50_000_000;
     let mut index_writer = index
-        .writer(50_000_000)
+        .writer(HEAP_SIZE)
         .expect("Database search index error. Failed to create index writer.");
 
     let message_field = schema
@@ -100,18 +102,8 @@ fn create_search_index(conn: database::Connection) -> SearchIndex {
         .get_field("code")
         .expect("Database search index error. Failed to find 'code' field in schema");
 
-    let messages: Vec<Message> = futures::executor::block_on(conn.run(|conn| {
-        let mut stmt = conn.prepare("SELECT code, message FROM error")?;
-        let messages = stmt.query_map([], |row| {
-            Ok(Message {
-                code: row.get(0)?,
-                message: row.get(1)?,
-            })
-        })?;
-        let messages: Result<Vec<Message>, rusqlite::Error> = messages.collect();
-        messages
-    }))
-    .expect("Database search index error. Failed to retrieve messages from database.");
+    let messages: Vec<Message> = futures::executor::block_on(conn.run(all_messages_query))
+        .expect("Database search index error. Failed to retrieve messages from database.");
 
     for message in messages {
         let mut doc = Document::default();
