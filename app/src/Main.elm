@@ -24,8 +24,7 @@ type alias Model =
     }
 
 type Page
-    = Home
-    | Search Search.Model
+    = Search Search.Model
     | Analyze Analyze.Model
     | Explore Explore.Model
     | NotFound
@@ -84,8 +83,7 @@ viewNavigationBar : Model -> Html Msg
 viewNavigationBar model =
     H.ul
         [ HA.class "navbar" ]
-        [ H.li [] [ H.a [ HA.href "/" ] [ H.text "Home" ] ]
-        , H.li [] [ H.a [ HA.href "/search" ] [ H.text "Search" ] ]
+        [ H.li [] [ H.a [ HA.href "/search" ] [ H.text "Search" ] ]
         , H.li [] [ H.a [ HA.href "/analyze" ] [ H.text "Analyze" ] ]
         , H.li [] [ H.a [ HA.href "/explore" ] [ H.text "Explore" ] ]
         ]
@@ -93,7 +91,6 @@ viewNavigationBar model =
 viewPage : Page -> Html Msg
 viewPage page =
     case page of
-        Home -> H.text "TODO!"
         Search searchModel -> Search.view searchModel |> H.map SearchMsg
         Analyze analyzeModel -> Analyze.view analyzeModel |> H.map AnalyzeMsg
         Explore exploreModel -> Explore.view exploreModel |> H.map ExploreMsg
@@ -134,7 +131,7 @@ selectPage model url =
 pageParser : Model -> Parser ( ( Model, Cmd Msg ) -> a ) a
 pageParser model =
     Url.Parser.oneOf
-        [ Url.Parser.map ( { model | page = Home }, Cmd.none ) (Url.Parser.top)
+        [ Url.Parser.map (mapSearchUpdate model Search.init) (Url.Parser.top)
         , Url.Parser.map (mapSearchUpdate model Search.init) (Url.Parser.s "search")
         , Url.Parser.map (mapAnalyzeUpdate model Analyze.init) (Url.Parser.s "analyze")
         , Url.Parser.map (mapExploreUpdate model Explore.init) (Url.Parser.s "explore")
