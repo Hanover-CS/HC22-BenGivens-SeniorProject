@@ -1,4 +1,4 @@
-module Search exposing (Msg, Model, view, update, init)
+module Search exposing (Msg, Model, view, update, init, viewErrorMessage)
 
 import Html as H exposing (Html)
 import Html.Attributes as HA
@@ -76,7 +76,7 @@ sort sortMode messages =
         Relevance -> messages
         Length -> List.sortBy (.message >> String.words >> String.concat >> String.length) messages
     
-viewErrorMessage : ErrorMessage -> Html Msg
+viewErrorMessage : ErrorMessage -> Html msg
 viewErrorMessage { message, code } =
     H.tr
         [ HA.class "error-message-row"  ]
